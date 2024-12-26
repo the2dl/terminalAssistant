@@ -1,0 +1,159 @@
+#!/bin/bash
+
+# Check for required dependencies
+if ! command -v jq &> /dev/null; then
+    echo "Error: jq is not installed. Please install it first."
+    exit 1
+fi
+
+# Check for config file and API key
+CONFIG_DIR="/etc/assist"
+CONFIG_FILE="$CONFIG_DIR/config"
+PROMPT_FILE="$CONFIG_DIR/prompt"
+
+# Add default settings
+MODEL="gemini-pro"
+SAFETY_SETTINGS=$(jq -n '[
+    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+]')
+
+# Add default prompt template
+DEFAULT_PROMPT=$(cat <<'END'
+You are a command line assistant. Be concise and direct. Format your response in JSON with these fields:
+- answer: Brief explanation (1-2 sentences max)
+- examples: Array of 1-2 practical examples (if applicable)
+- note: Optional additional context (if critical)
+
+Keep responses focused and minimal. Skip examples for conceptual questions.
+Question: %s
+END
+)
+
+# Load prompt from file or use default
+if [ -f "$PROMPT_FILE" ]; then
+    PROMPT_TEMPLATE=$(sudo cat "$PROMPT_FILE")
+else
+    PROMPT_TEMPLATE="$DEFAULT_PROMPT"
+fi
+
+# Source the config file using sudo
+if [ -f "$CONFIG_FILE" ]; then
+    GOOGLE_API=$(sudo cat "$CONFIG_FILE" | grep GOOGLE_API | cut -d'=' -f2)
+    CONFIG_MODEL=$(sudo cat "$CONFIG_FILE" | grep MODEL | cut -d'=' -f2)
+    [ ! -z "$CONFIG_MODEL" ] && MODEL=$CONFIG_MODEL
+fi
+
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: Configuration file not found at $CONFIG_FILE"
+    echo "Please create it with your API key:"
+    echo "sudo mkdir -p $CONFIG_DIR"
+    echo "sudo echo 'GOOGLE_API=your_api_key_here' > $CONFIG_FILE"
+    echo "sudo echo 'MODEL=gemini-pro' >> $CONFIG_FILE"
+    echo "sudo chmod 600 $CONFIG_FILE"
+    echo ""
+    echo "Optionally, create a custom prompt:"
+    echo "sudo echo 'Your custom prompt here' > $PROMPT_FILE"
+    exit 1
+fi
+
+# Function to send a request to the Gemini API
+function ai() {
+    if [ -z "$1" ]; then
+        echo -e "\033[1;31mError:\033[0m Please provide input for the AI."
+        return 1
+    fi
+    
+    # Escape special characters in the input
+    local escaped_input=$(printf '%q' "$*")
+    
+    # Show a subtle loading indicator
+    echo -e "\033[1;90mThinking...\033[0m" >&2
+    
+    # Use printf with %b to properly handle escaped characters
+    local prompt=$(printf "$PROMPT_TEMPLATE" "$escaped_input")
+    local request=$(jq -n \
+        --arg content "$prompt" \
+        --arg model "$MODEL" \
+        --argjson safety "$SAFETY_SETTINGS" \
+        '{
+            "contents": [ { "parts": [ { "text": $content } ] } ],
+            "safetySettings": $safety
+        }')
+    
+    local response=$(curl --silent \
+        --header 'Content-Type: application/json' \
+        --data "$request" \
+        --request POST \
+        "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent?key=$GOOGLE_API")
+    
+    # Clear the loading indicator line
+    echo -en "\033[1A\033[K"
+    
+    # Add a nice border and padding around the response
+    echo -e "\033[1;90m┌──────────────────────────────────────────────────────────\033[0m"
+    
+    # Format and colorize the output
+    echo "$response" | jq -r '.candidates[0].content.parts[0].text' | \
+    sed -n '/^{/,/^}/p' | \
+    jq -r '
+        "  \u001b[1;36m💡 \u001b[1;97m\(.answer)\u001b[0m\n" + 
+        if (.examples | length > 0) then
+            "\n  \u001b[1;33m📋 Examples:\u001b[0m\n" + 
+            (.examples | map("    \u001b[1;90m•\u001b[0m \u001b[1;97m\(.)\u001b[0m") | join("\n")) + "\n"
+        else "" end +
+        if (.note != null and .note != "") then
+            "\n  \u001b[1;35m📝 Note:\u001b[0m \(.note)\n"
+        else "" end
+    ' 2>/dev/null || echo -e "  \033[1;31m❌ Error:\033[0m Invalid API response"
+    
+    echo -e "\033[1;90m└──────────────────────────────────────────────────────────\033[0m"
+}
+
+# Function to provide feedback on a command
+function feedback() {
+    if [ -z "$1" ]; then
+        echo "Error: Please specify a command to get feedback on."
+        return 1
+    fi
+    
+    if ! command -v "$1" &> /dev/null; then
+        echo "Error: Command '$1' not found."
+        return 1
+    fi
+    
+    local output
+    if ! output=$(man "$1" 2>/dev/null | col -b); then
+        echo "Error: No manual entry for '$1'"
+        return 1
+    fi
+    
+    ai "Provide feedback on the following command's man page output:
+
+$output"
+}
+
+# Main command processing
+if [ $# -eq 0 ]; then
+    echo "Usage: assist <query>"
+    echo "       assist feedback <command>"
+    exit 1
+fi
+
+if [ "$1" = "feedback" ]; then
+    shift
+    feedback "$@"
+else
+    # Check if we have unmatched quotes
+    if ! printf "%s\n" "$*" 2>/dev/null; then
+        # If quotes are unmatched, read the full line directly
+        read -r -p "Enter your query: " full_query
+        ai "$full_query"
+    else
+        # Use array to preserve the original input without modification
+        query=("$@")
+        ai "${query[@]}"
+    fi
+fi
