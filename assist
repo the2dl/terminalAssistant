@@ -136,24 +136,11 @@ $output"
 }
 
 # Main command processing
-if [ $# -eq 0 ]; then
-    echo "Usage: assist <query>"
-    echo "       assist feedback <command>"
-    exit 1
-fi
-
 if [ "$1" = "feedback" ]; then
     shift
     feedback "$@"
 else
-    # Check if we have unmatched quotes
-    if ! printf "%s\n" "$*" 2>/dev/null; then
-        # If quotes are unmatched, read the full line directly
-        read -r -p "Enter your query: " full_query
-        ai "$full_query"
-    else
-        # Use array to preserve the original input without modification
-        query=("$@")
-        ai "${query[@]}"
-    fi
+    # Always prompt for input
+    read -r -p "💭 Enter your query: " query
+    ai "$query"
 fi

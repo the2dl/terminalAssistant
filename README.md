@@ -2,8 +2,6 @@
 
 A sleek command-line tool that provides quick, AI-powered answers to your command-line questions using Google's Gemini API.
 
-![demo](demo.png)
-
 ## ✨ Features
 
 - 🚀 Quick, focused responses to command-line queries
@@ -23,5 +21,20 @@ A sleek command-line tool that provides quick, AI-powered answers to your comman
 ## 📚 Usage
 
 ```bash
-assist <query>
+assist
+💭 Enter your query: how do you upgrade fedora?
+
+┌──────────────────────────────────────────────────────────
+  💡 You can upgrade Fedora using the `dnf` package manager, typically by first
+refreshing the package list and then initiating the upgrade.
+
+  📋 Examples:
+    • sudo dnf upgrade --refresh
+    • sudo dnf system-upgrade download --releasever=39 && sudo dnf system-upgrade
+reboot
+
+  📝 Note: The second example shows upgrading to Fedora version 39. Replace '39' with the
+desired version.
+
+└──────────────────────────────────────────────────────────
 ```
