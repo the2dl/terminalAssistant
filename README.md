@@ -2,6 +2,8 @@
 
 A sleek command-line tool that provides quick, AI-powered answers to your command-line questions using Google's Gemini API.
 
+![demo](demo.png)
+
 ## ✨ Features
 
 - 🚀 Quick, focused responses to command-line queries

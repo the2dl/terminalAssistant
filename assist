@@ -99,15 +99,15 @@ function ai() {
     echo "$response" | jq -r '.candidates[0].content.parts[0].text' | \
     sed -n '/^{/,/^}/p' | \
     jq -r '
-        "  \u001b[1;36m💡 \u001b[1;97m\(.answer)\u001b[0m\n" + 
+        "  \u001b[1;36m💡 \u001b[1;97m" + .answer + "\u001b[0m\n" +
         if (.examples | length > 0) then
             "\n  \u001b[1;33m📋 Examples:\u001b[0m\n" + 
-            (.examples | map("    \u001b[1;90m•\u001b[0m \u001b[1;97m\(.)\u001b[0m") | join("\n")) + "\n"
+            (.examples | map("    \u001b[1;90m•\u001b[0m \u001b[1;97m" + . + "\u001b[0m") | join("\n")) + "\n"
         else "" end +
         if (.note != null and .note != "") then
-            "\n  \u001b[1;35m📝 Note:\u001b[0m \(.note)\n"
+            "\n  \u001b[1;35m📝 Note:\u001b[0m " + .note + "\n"
         else "" end
-    ' 2>/dev/null || echo -e "  \033[1;31m❌ Error:\033[0m Invalid API response"
+    ' 2>/dev/null | fold -s -w 100 || echo -e "  \033[1;31m❌ Error:\033[0m Invalid API response"
     
     echo -e "\033[1;90m└──────────────────────────────────────────────────────────\033[0m"
 }
